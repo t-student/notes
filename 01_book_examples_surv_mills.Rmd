@@ -1,0 +1,193 @@
+---
+title: "Book examples - Survival (Mills)"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Parametric Survival (AFT) Models
+
+AFT models have the form $ln(t_j) = x_j \beta + z_j$ - the log of survival time is a linear function of the covariates. The distributional form of $z_j$ determines the type of model. If f() for $z_j$ is the extreme-value density then we get a Weibull model.
+
+The interpretation of an AFT model is as a change in the time scale by a factor of $exp(-x_j \beta)$. Note the minus sign. AFT models assume that all observations follow the same hazard function but that the time axis varies in a way that some groups pass through the stages of the hazard curve faster than others. Think of dog years versus human years - dog years pass 7 times quicker than human years.
+
+### Weibull
+
+The `Rossi` data records time to rearrest.
+
+```{r}
+library(GlobalDeviance)
+library(eha)
+library(brms)
+library(coin)
+
+data(Rossi)
+Rossi$fin <- factor(Rossi$fin, labels = c("no", "yes"))
+dfsurv <- Rossi
+# can also use aftreg
+e1 <- survreg(Surv(week, arrest) ~ fin + age + prio, dist = "exponential", data = dfsurv)
+summary(e1)
+
+```
+The interpretation differs from that of a PH model. In an AFT mode, a positive coefficient indicates longer survival times with increasing values of the coefficient, a negative coefficient leads to shorter survival times.
+
+The covariate for financial aid is 0.335 and since this is positive, people who receive financial aid have a longer expected time to arrest. The all-important *acceleration factor* is $exp(0.335) = 1.43$. The interpretation is "giving financial aid delays arrest by stretching out time to event by a factor of 1.43."
+
+This value of 1.43 is the ratio of the expected (mean) time to event in the two groups.
+
+Note - for the exponential model, the acceleration factor and the hazard ratio are reciprocals of one another.
+
+If you receive fin-aid, rearrest will be delayed by 60 weeks:
+
+$$
+ln(t) = (3.761 + 0.335 * 1) = 4.095    \\\ 
+exp(4.095) = 60.1
+$$
+
+The `prio` estimate represents the number of previous convictions. The interpretaion is that each additional previous conviction reduces the time to rearrest by a factor of $exp(\beta) = exp(-0.091) = 0.913$ or equivalently about 8.7% (holding other covariates constant).
+
+The 95% ci for fin-aid is $exp(0.335 \pm (1.96*0.1901)) = (0.96, 2.03)$. 
+
+```{r}
+df <- data.frame(fin = c("no", "yes"),
+                 age = mean(Rossi$age),
+                 prio = mean(Rossi$prio))
+medfin <- predict(e1, newdata = df, type = "uquantile", p = 0.5, se = T)
+
+# median time to rearrest
+exp(medfin$fit)
+
+```
+
+### Lognormal
+
+First using `survreg`
+
+```{r}
+
+summary(e3 <- survreg(Surv(week, arrest) ~ fin + age + prio, 
+                     dist = "lognormal", data = dfsurv))
+
+
+```
+
+Then with `aftreg`. I am not sure why the $log(scale) = 0.28$ above equals the negative of what is reported below as $log(shape) = -0.28$. Also $exp(scale) = exp(1.33) = 3.78$ from above...???
+
+I am guessing the `aftreg` version makes more intuitive sense than the survreg version.
+
+```{r}
+
+summary(e3 <- aftreg(Surv(week, arrest) ~ fin + age + prio, 
+                     dist = "lognormal", 
+                     param = "lifeExp", data = dfsurv))
+
+
+```
+
+Compare against `brms`
+
+```{r, eval = F}
+# Not run
+dfsurv$censored <- 1 - dfsurv$arrest
+summary(lm1 <- brm(week | cens(censored) ~ fin + age + prio,
+                   data = dfsurv,
+                   family = lognormal(),
+                   chains = 1,
+                   iter = 2000))
+# saveRDS(lm1, "brm1.RDS")
+
+```
+
+One I prepared earlier that gives the same results as frequentist approach. Note - need to check parameterisation for lognormal in brms, see (https://cran.r-project.org/web/packages/brms/vignettes/brms_families.html)
+
+```{r}
+dfsurv$censored <- 1 - dfsurv$arrest
+lm1 <- readRDS("brm1.RDS")
+summary(update(lm1, newdata = dfsurv))
+```
+
+### Utility functions for Lognormal.
+
+```{r}
+# See https://au.mathworks.com/help/stats/lognstat.html
+
+# The mean and variance of a lognormal distribution created
+# with values mu and sig will be:
+m_of_lognormal <- function(mu, sig){
+  exp(mu + ((sig^2)/2))
+}
+upsilon_of_lognormal <- function(mu, sig){
+  exp(2*mu + sig^2) * (exp(sig^2) - 1)
+}
+
+n <- 10400
+tte0 <- 6
+tte1 <- 2.5
+sd0 <- 1
+sd1 <- 1
+
+t0 <- rlnorm(n, meanlog = tte0, sdlog = sd0)
+t1 <- rlnorm(n, meanlog = tte1, sdlog = sd1)
+
+sprintf("The mean(sd) of t0 are %.3f (%.3f)", mean(t0), sd(t0))
+sprintf("Compare with t0 params")
+sprintf("The mean(sd) of t0 are %.3f (%.3f)", 
+        m_of_lognormal(tte0, sd0), 
+        sqrt(upsilon_of_lognormal(tte0, sd0)))
+
+cat("\n")
+sprintf("The mean(sd) of t1 are %.3f (%.3f)", mean(t1), sd(t1))
+sprintf("Compare with t1 params")
+sprintf("The mean(sd) of t0 are %.3f (%.3f)", 
+        m_of_lognormal(tte1, sd1), 
+        sqrt(upsilon_of_lognormal(tte1, sd1)))
+```
+
+
+
+```{r}
+# To get a mean of m and a variance of upsilon in the
+# actual lognormal distributed random variables specify
+# rlnorm with the mu and sig returned by these functions.
+# parameters
+mu_of_lognormal <- function(m, upsilon){
+  log((m^2) / sqrt(upsilon + (m^2)))
+}
+sig_of_lognormal <- function(m, upsilon){
+  sqrt(log((upsilon/m^2) + 1))
+}
+
+n <- 10400
+tte0 <- mu_of_lognormal(6, 1.2)
+tte1 <- mu_of_lognormal(2.5, 1)
+sd0 <- sig_of_lognormal(6, 1.2)
+sd1 <- sig_of_lognormal(2.5, 1)
+
+t0 <- rlnorm(n, meanlog = tte0, sdlog = sd0)
+t1 <- rlnorm(n, meanlog = tte1, sdlog = sd1)
+
+sprintf("The mean(sd) of t0 are %.3f (%.3f)", mean(t0), sd(t0))
+sprintf("The mean(sd) of t1 are %.3f (%.3f)", mean(t1), sd(t1))
+```
+
+
+```{r}
+
+# Study 
+tte0 <- mu_of_lognormal(5, 1.8)
+tte1 <- mu_of_lognormal(2.5, 1.2)
+sd0 <- sig_of_lognormal(5, 1.8)
+sd1 <- sig_of_lognormal(2.5, 1.2)
+
+n <- 104
+t0 <- rlnorm(n, meanlog = tte0, sdlog = sd0)
+t1 <- rlnorm(n, meanlog = tte1, sdlog = sd1)
+t <- c(t0, t1)
+trt <- as.factor(rep(0:1, each = n))
+status <- rep(1, 2*n)
+
+t.test(t0, t1, paired = T)
+survdiff(Surv(t, status)~trt)
+```
