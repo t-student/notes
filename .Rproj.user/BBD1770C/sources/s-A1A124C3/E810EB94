@@ -1,19 +1,21 @@
 {
     "collab_server" : "",
     "contents" : "",
-    "created" : 1544094084726.000,
+    "created" : 1544094372944.000,
     "dirty" : false,
     "encoding" : "UTF-8",
     "folds" : "",
-    "hash" : "2944307258",
-    "id" : "E175BC5D",
-    "lastKnownWriteTime" : 1544094080,
-    "last_content_update" : 1544094080,
+    "hash" : "0",
+    "id" : "E810EB94",
+    "lastKnownWriteTime" : 1544094336,
+    "last_content_update" : 1544094336,
     "path" : "~/notes/_bookdown.yml",
     "project_path" : "_bookdown.yml",
     "properties" : {
+        "cursorPosition" : "4,23",
+        "scrollLine" : "0"
     },
-    "relative_order" : 2,
+    "relative_order" : 3,
     "source_on_save" : false,
     "source_window" : "",
     "type" : "yaml"
